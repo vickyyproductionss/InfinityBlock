@@ -42,8 +42,9 @@ public class GameManager : MonoBehaviour
     private Vector3 lastTouchPosition;
     public GameObject BlockPrefab;
     public GameObject BlockParent;
-    public List<Vector3> blockPositions;
-    private Dictionary<Vector3,int> removedElements;
+    // public List<Vector3> blockPositions;
+    public Vector3[] blockPositions;
+    public Dictionary<Vector3,int> removedElements;
     private Camera mainCamera;
     public static GameManager instance;
 
@@ -90,7 +91,6 @@ public class GameManager : MonoBehaviour
                 {
                     StartCoroutine(DropAndFillTestBlocks());
                 }
-
             });
         }
     }
@@ -190,10 +190,6 @@ public class GameManager : MonoBehaviour
             block.GetComponent<Block>().HoldingPosition = newBlockPos;
             LeanTween.move(block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() => { OnBlockAnimFinished(block, newBlockPos); });
             OnUIUpdate.Invoke();
-            if (blocksSpawned == 2)
-            {
-                StartCoroutine(moveAllSquares());
-            }
         }
     }
 
@@ -206,14 +202,12 @@ public class GameManager : MonoBehaviour
     //First Block Drops then it merges with surrounding and then it moves all the grid the new possible positions and then it checks for the further merges if then merges happen then again move the grid to further positions
     IEnumerator moveAllSquares()
     {
-        yield return new WaitForSeconds(0.01f);
+        yield return new WaitForEndOfFrame();
         for (int i = 0; i < BlockParent.transform.childCount; i++)
         {
             GameObject block = BlockParent.transform.GetChild(i).gameObject;
             float blockXPosition = block.transform.localPosition.x;
             var availablePositions = blockPositions.Where(p => p.x == blockXPosition).ToList();
-            // var occupiedPositions = BlockParent.transform.Cast<Transform>().Where(t => t.localPosition.x == blockXPosition).Select(t => t.localPosition).ToList();
-            // availablePositions.RemoveAll(pos => occupiedPositions.Contains(pos));
 
             Vector3 newBlockPos = new Vector3();
             if (availablePositions.Count > 0)
@@ -286,13 +280,6 @@ public class GameManager : MonoBehaviour
                 if (similarBlocks.Count >= 2)
                 {
                     DestroySimilarBlocks(similarBlocks, block);
-                    yield return new WaitForSecondsRealtime(0.25f);
-
-                }
-                else
-                {
-                    similarBlocks.Clear();
-                    iterating = false;
                 }
             }
         }
@@ -300,17 +287,15 @@ public class GameManager : MonoBehaviour
     }
     void RemovePosition(Vector3 element)
     {
-        int index = blockPositions.IndexOf(element);
+        int index = System.Array.IndexOf(blockPositions, element);
         if (index != -1)
         {
             removedElements[element] = index;
-            blockPositions.RemoveAt(index);
-
-            Debug.Log($"Removed element {element} from index {index}");
+            blockPositions[index] = Vector3.zero;
         }
         else
         {
-            Debug.LogError("Element not found in the list");
+            Debug.LogError("Element not found in the array");
         }
     }
 
@@ -319,11 +304,9 @@ public class GameManager : MonoBehaviour
         if (removedElements.TryGetValue(element, out int index))
         {
             // Ensure the index is within bounds
-            if (index >= 0 && index <= blockPositions.Count)
+            if (index >= 0 && index < blockPositions.Length)
             {
-                blockPositions.Insert(index, element);
-                Debug.Log($"Added element {element} back at index {index}");
-                
+                blockPositions[index] = element;
                 // Remove from the dictionary after adding back
                 removedElements.Remove(element);
             }
@@ -334,7 +317,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.LogError($"Element not found in removed elements dictionary {element}");
+            Debug.LogError($"Element not found in removed elements dictionary: {element}");
         }
     }
     List<GameObject> GetSortedBlocksByCreatedAt()
@@ -374,13 +357,10 @@ public class GameManager : MonoBehaviour
         //var newestBlock = similarBlocks.OrderByDescending(b => b.GetComponent<Block>().CreatedAt).First();
         if (similarBlocks.Contains(lastBlock))
         {
-            similarBlocks.Remove(lastBlock);
             _block = lastBlock;
         }
-        else
-        {
-            similarBlocks.Remove(_block);
-        }
+        similarBlocks.Remove(_block);
+        
         double myValue = _block.GetComponent<Block>().BlockValue;
         double myNewValue = IncreaseScore(myValue, similarBlocks.Count + 1);
         _block.GetComponent<Block>().BlockValue = myNewValue;
@@ -426,7 +406,7 @@ public class GameManager : MonoBehaviour
 
     void CalculateBlockPositions()
     {
-        blockPositions = new List<Vector3>();
+        blockPositions = new Vector3[35];
 
         Rect safeArea = Screen.safeArea;
         Vector3 safeAreaTopLeft = mainCamera.ScreenToWorldPoint(new Vector3(safeArea.xMin, safeArea.yMax, mainCamera.nearClipPlane));
@@ -435,14 +415,15 @@ public class GameManager : MonoBehaviour
         float startY = safeAreaTopLeft.y - blockSize / GapSize - blockSize / 2f;
         float partitionWidth = blockSize + blockSize / GapSize;
         float partitionHeight = blockSize + blockSize / GapSize;
-
+        int count = 0;
         for (int i = 0; i < 5; i++)
         {
             for (int j = 0; j < 7; j++)
             {
                 float posX = startX + i * partitionWidth;
                 float posY = startY - j * partitionHeight;
-                blockPositions.Add(new Vector3(posX, posY, 0));
+                blockPositions[count] = new Vector3(posX, posY,0);
+                count++;
             }
         }
     }
