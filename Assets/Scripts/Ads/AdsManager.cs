@@ -23,10 +23,19 @@ public class AdsManager : MonoBehaviour
 #else
   private string _adUnitId = "unused";
 #endif
+
+#if UNITY_ANDROID
+    private string _adUnitId_Gems = "ca-app-pub-1648950075295248/1447831811";
+#elif UNITY_IPHONE
+    private string _adUnitId_Gems = "ca-app-pub-3940256099942544/1712485313";
+#else
+  private string _adUnitId_Gems = "unused";
+#endif
     #endregion
 
     BannerView _bannerView;
     private RewardedAd _rewardedAd;
+    private RewardedAd _rewardedAd_Gem;
 
 
     /// <summary>
@@ -35,12 +44,13 @@ public class AdsManager : MonoBehaviour
     public static AdsManager instance;
     void Awake()
     {
-        if(instance == null)
+        if (instance == null)
         {
             instance = this;
             DontDestroyOnLoad(this);
         }
-        else{
+        else
+        {
             Destroy(this.gameObject);
         }
     }
@@ -51,8 +61,8 @@ public class AdsManager : MonoBehaviour
     }
     void onInitSuccess()
     {
-        Debug.Log("Init Success");
-        LoadRewardedAd();
+        LoadRewardedAd(_adUnitId_Gems);
+        LoadRewardedAd(_adUnitId);
         LoadBannerAd();
     }
     public void LoadBannerAd()
@@ -64,11 +74,10 @@ public class AdsManager : MonoBehaviour
 
         var adRequest = new AdRequest();
 
-        Debug.Log("Loading banner ad.");
         _bannerView.LoadAd(adRequest);
     }
     #region RewardedAds
-    public void LoadRewardedAd()
+    public void LoadRewardedAd(string ad_id)
     {
         // Clean up the old ad before loading a new one.
         if (_rewardedAd != null)
@@ -77,13 +86,12 @@ public class AdsManager : MonoBehaviour
             _rewardedAd = null;
         }
 
-        Debug.Log("Loading the rewarded ad.");
 
         // create our request used to load the ad.
         var adRequest = new AdRequest();
 
         // send the request to load the ad.
-        RewardedAd.Load(_adUnitId, adRequest,
+        RewardedAd.Load(ad_id, adRequest,
             (RewardedAd ad, LoadAdError error) =>
             {
                 // if error is not null, the load request failed.
@@ -94,12 +102,32 @@ public class AdsManager : MonoBehaviour
                     return;
                 }
 
-                Debug.Log("Rewarded ad loaded with response : "
-                          + ad.GetResponseInfo());
-
-                _rewardedAd = ad;
-                RegisterRewardedEventHandlers(_rewardedAd);
+                if (ad_id == _adUnitId)
+                {
+                    _rewardedAd = ad;
+                    RegisterRewardedEventHandlers(_rewardedAd);
+                }
+                else if (ad_id == _adUnitId_Gems)
+                {
+                    _rewardedAd_Gem = ad;
+                    RegisterRewardedEventHandlers(_rewardedAd_Gem);
+                }
             });
+    }
+    public void ShowRewardedForGems()
+    {
+        DestroyBannerView();
+        const string rewardMsg = "Rewarded ad rewarded the user. Type: {0}, amount: {1}.";
+
+        if (_rewardedAd_Gem != null && _rewardedAd_Gem.CanShowAd())
+        {
+            _rewardedAd_Gem.Show((Reward reward) =>
+            {
+                // TODO: Reward the user.
+                PlayfabManager pf = GameObject.Find("HomeUIController").GetComponent<PlayfabManager>();
+                pf.AddVirtualCurrency(20);
+            });
+        }
     }
     public void ShowRewardedAd()
     {
@@ -111,7 +139,6 @@ public class AdsManager : MonoBehaviour
             _rewardedAd.Show((Reward reward) =>
             {
                 // TODO: Reward the user.
-                Debug.Log(String.Format(rewardMsg, reward.Type, reward.Amount));
             });
         }
     }
@@ -155,7 +182,6 @@ public class AdsManager : MonoBehaviour
     #region BannerAds
     public void CreateBannerView()
     {
-        Debug.Log("Creating banner view");
 
         if (_bannerView != null)
         {
@@ -170,7 +196,6 @@ public class AdsManager : MonoBehaviour
     {
         if (_bannerView != null)
         {
-            Debug.Log("Destroying banner view.");
             _bannerView.Destroy();
             _bannerView = null;
         }
