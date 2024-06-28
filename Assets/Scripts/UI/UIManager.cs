@@ -6,12 +6,11 @@ using UnityEngine;
 
 public class UIManager : MonoBehaviour
 {
-    private static readonly string[] suffixes = { "", "K", "M", "B", "T", "Q", "P", "E", "Z", "Y" };
     public GameManager gameManager;
 
 
-    [Header("Upcoming Blocks")]
-    public TMP_Text NextBlockNumberText;
+    [Header("TotalScore Blocks")]
+    public TMP_Text TotalScoreText;
     [Header("Game Over Stuff")]
     public GameObject GameoverPanel;
     void OnEnable()
@@ -20,7 +19,10 @@ public class UIManager : MonoBehaviour
         gameManager.OnGameOver += GameOver;
     }
 
-    
+    private void UpdateUI()
+    {
+        TotalScoreText.text = ConvertToSuffixedString(gameManager.Score);
+    }
 
     void OnDisable()
     {
@@ -33,16 +35,15 @@ public class UIManager : MonoBehaviour
     {
         Debug.Log("Game Over!!!");
         GameoverPanel.SetActive(true);
+        PlayerPrefs.DeleteKey("x2HighestBlock");
+        PlayerPrefs.DeleteKey("SavedBlocks");
     }
     #endregion
 
     #region Upcoming Blocks Region
-    void UpdateUI()
-    {
-        NextBlockNumberText.text = ConvertToSuffixedString(gameManager.NextBlockNumber);
-    }
     #endregion
     #region Utility Methods
+    private static readonly string[] suffixes = { "", "K", "M", "B", "T", "Q", "P", "E", "Z", "Y" };
     public string ConvertToSuffixedString(double num)
     {
         int suffixIndex = 0;

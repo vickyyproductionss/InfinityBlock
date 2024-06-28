@@ -5,10 +5,15 @@ using Unity.Mathematics;
 using System.Linq;
 using System.Collections;
 using TMPro;
+using UnityEngine.SceneManagement;
+using Newtonsoft.Json;
+using System;
 
 public class GameManager : MonoBehaviour
 {
     public double NextBlockNumber;
+    public double SuperNextBlockNumber;
+    public float PaddingFromTop;
 
     ///UI EVENT
     public delegate void UIUpdateEvent();
@@ -24,14 +29,20 @@ public class GameManager : MonoBehaviour
         set { _isGameOver = value; }
     }
 
-    private static double _score;
-    public static double Score
+    private double _score;
+    public double Score
     {
         get { return _score; }
         set
         {
+            int oldHighscore = PlayerPrefs.GetInt("x2BlocksHighscore");
+            if (value > oldHighscore)
+            {
+                oldHighscore = (int)value;
+                PlayerPrefs.SetInt("x2BlocksHighscore", oldHighscore);
+            }
             _score = value;
-            //OnUIUpdate?.Invoke();  // Trigger the event when score changes
+            OnUIUpdate?.Invoke();  // Trigger the event when score changes
         }
     }
 
@@ -42,9 +53,9 @@ public class GameManager : MonoBehaviour
     private Vector3 lastTouchPosition;
     public GameObject BlockPrefab;
     public GameObject BlockParent;
-    // public List<Vector3> blockPositions;
+    public GameObject PopupsParent;
     public Vector3[] blockPositions;
-    public Dictionary<Vector3,int> removedElements;
+    public Dictionary<Vector3, int> removedElements;
     private Camera mainCamera;
     public static GameManager instance;
 
@@ -55,7 +66,15 @@ public class GameManager : MonoBehaviour
     [Header("BlocksInfo")]
     int blocksSpawned = 0;
     GameObject lastBlock;
+    GameObject lastBlockInSelectedRow;
     bool iterating;
+
+    [Header("UI Blocks and BGs")]
+    public UIBlock UINextBlock;
+    public UIBlock UISuperNextBlock;
+    public ManageBackground manageBackground;
+
+    bool isProgressSaved = true;
 
     #region TestingStuff
     public int TestBlocksCount;
@@ -119,15 +138,43 @@ public class GameManager : MonoBehaviour
         {
             StartCoroutine(DropAndFillTestBlocks());
         }
+        int pow1 = UnityEngine.Random.Range(startingPower, endingPower);
+        int pow2 = UnityEngine.Random.Range(startingPower, endingPower);
+        NextBlockNumber = Mathf.Pow(2, pow1);
+        SuperNextBlockNumber = Mathf.Pow(2, pow2);
+        UINextBlock.BlockValue = NextBlockNumber;
+        UISuperNextBlock.BlockValue = SuperNextBlockNumber;
+        RetrieveProgress();
+    }
+
+    void RetrieveProgress()
+    {
+        string json = PlayerPrefs.GetString("SavedBlocks");
+        if (!string.IsNullOrEmpty(json))
+        {
+            SaveBlocks saveBlocks = JsonConvert.DeserializeObject<SaveBlocks>(json);
+            Score = saveBlocks.Score;
+            foreach (var block in saveBlocks.Blocks)
+            {
+                GameObject retrievedBlock = Instantiate(BlockPrefab, block.BlockPosition, Quaternion.identity);
+                retrievedBlock.transform.localScale = Vector3.one * blockSize;
+                retrievedBlock.GetComponent<Block>().BlockValue = block.BlockValue;
+                retrievedBlock.transform.parent = BlockParent.transform;
+                retrievedBlock.GetComponent<Block>().HoldingPosition = block.BlockPosition;
+                RemovePosition(block.BlockPosition);
+                lastBlock = retrievedBlock;
+                blocksSpawned++;
+            }
+        }
     }
     bool isMergeRunning;
     float timeBetweenDrops = 0;
     void Update()
     {
         DropNextBlock();
-        if(blocksSpawned > 1)
+        if (blocksSpawned > 1)
         {
-            if(!isMergeRunning)
+            if (!isMergeRunning)
             {
                 StartCoroutine(moveAllSquares());
             }
@@ -170,33 +217,143 @@ public class GameManager : MonoBehaviour
     #region  CoreLogic
     void DropNextBlock()
     {
-        if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began && !testingMode && !IsGameOver && timeBetweenDrops > 0.3f)
+        if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began && !testingMode && !IsGameOver && timeBetweenDrops > 0.5f && !IsAnythingMoving() && !IsAnyPopupActive())
         {
             timeBetweenDrops = 0;
             blocksSpawned++;
             Touch lastTouch = Input.GetTouch(Input.touchCount - 1);
             Vector3 lastTouchPositionScreen = lastTouch.position;
-            lastTouchPosition = mainCamera.ScreenToWorldPoint(new Vector3(lastTouchPositionScreen.x, lastTouchPositionScreen.y, mainCamera.nearClipPlane));
-            GameObject block = Instantiate(BlockPrefab, lastTouchPosition, Quaternion.identity);
-            lastBlock = block;
-            block.name = "Block_" + blocksSpawned;
-            int pow = UnityEngine.Random.Range(startingPower, endingPower);
-            double blockNum = NextBlockNumber;
-            block.GetComponent<Block>().BlockValue = blockNum;
-            NextBlockNumber = Mathf.Pow(2, pow);
-            block.transform.localScale = Vector3.one * blockSize;
             Vector3 newBlockPos = DeterminePartitionAndPosition(lastTouchPositionScreen.x);
-            RemovePosition(newBlockPos);
-            block.GetComponent<Block>().HoldingPosition = newBlockPos;
-            LeanTween.move(block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() => { OnBlockAnimFinished(block, newBlockPos); });
-            OnUIUpdate.Invoke();
+            lastTouchPosition = mainCamera.ScreenToWorldPoint(new Vector3(lastTouchPositionScreen.x, lastTouchPositionScreen.y, mainCamera.nearClipPlane));
+            if (newBlockPos != new Vector3(-100, -100, -100) && lastTouchPosition.y > manageBackground.BottomLine.transform.position.y)
+            {
+                lastTouchPosition = new Vector3(newBlockPos.x, manageBackground.BottomLine.transform.position.y, newBlockPos.z);
+                GameObject block = Instantiate(BlockPrefab, lastTouchPosition, Quaternion.identity);
+                lastBlock = block;
+                block.name = "Block_" + blocksSpawned;
+                int pow = UnityEngine.Random.Range(startingPower, endingPower);
+                double blockNum = NextBlockNumber;
+                NextBlockNumber = SuperNextBlockNumber;
+                UINextBlock.BlockValue = SuperNextBlockNumber;
+                block.transform.localScale = Vector3.one * blockSize;
+                block.GetComponent<Block>().BlockValue = blockNum;
+                SuperNextBlockNumber = Mathf.Pow(2, pow);
+                UISuperNextBlock.BlockValue = SuperNextBlockNumber;
+                RemovePosition(newBlockPos);
+                block.GetComponent<Block>().HoldingPosition = newBlockPos;
+                block.GetComponent<Block>().IsMoving = true;
+                LeanTween.move(block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() => { OnBlockAnimFinished(block, newBlockPos); });
+            }
+            else
+            {
+                if (BlockParent.transform.childCount == 35)
+                {
+                    OnGameOver.Invoke();
+                }
+                Debug.Log("No Position Found in this lane");
+            }
         }
+        else if (!IsAnythingMoving() && BlockParent.transform.childCount == 35)
+        {
+            OnGameOver.Invoke();
+        }
+        if (!IsAnythingMoving() && !isProgressSaved)
+        {
+            isProgressSaved = true;
+            SaveProgress();
+        }
+    }
+    void SaveProgress()
+    {
+        SaveBlocks saveBlocks = new SaveBlocks
+        {
+            Blocks = new List<BlockInfo>()
+        };
+        saveBlocks.Score = Score;
+        foreach (Transform t in BlockParent.transform)
+        {
+            double BlockValue = t.GetComponent<Block>().BlockValue;
+            Vector3 BlockPos = t.position;
+            BlockInfo info = new BlockInfo();
+            info.BlockValue = BlockValue;
+            info.BlockPosition = BlockPos;
+            info.createdAt = t.GetComponent<Block>().CreatedAt;
+            saveBlocks.Blocks.Add(info);
+        }
+        string json = JsonConvert.SerializeObject(saveBlocks);
+        PlayerPrefs.SetString("SavedBlocks", json);
+        PlayerPrefs.Save();
+    }
+
+    [System.Serializable]
+    public struct SerializableVector3
+    {
+        public float x;
+        public float y;
+        public float z;
+
+        public SerializableVector3(float x, float y, float z)
+        {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        public static implicit operator Vector3(SerializableVector3 sv3)
+        {
+            return new Vector3(sv3.x, sv3.y, sv3.z);
+        }
+
+        public static implicit operator SerializableVector3(Vector3 v3)
+        {
+            return new SerializableVector3(v3.x, v3.y, v3.z);
+        }
+    }
+
+
+    public class SaveBlocks
+    {
+        public double Score;
+        public List<BlockInfo> Blocks;
+    }
+    public class BlockInfo
+    {
+        public double BlockValue;
+        public SerializableVector3 BlockPosition;
+        public DateTime createdAt;
+    }
+
+    bool IsAnythingMoving()
+    {
+        foreach (Transform block in BlockParent.transform)
+        {
+            if (block.GetComponent<Block>().IsMoving)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool IsAnyPopupActive()
+    {
+        foreach (Transform block in PopupsParent.transform)
+        {
+            if (block.gameObject.activeSelf)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     void OnBlockAnimFinished(GameObject block, Vector3 finalPos)
     {
+        block.GetComponent<Block>().OnDropSound.Play();
+        block.GetComponent<Block>().IsMoving = false;
         block.transform.position = finalPos;
         block.transform.parent = BlockParent.transform;
+        isProgressSaved = false;
     }
 
     //First Block Drops then it merges with surrounding and then it moves all the grid the new possible positions and then it checks for the further merges if then merges happen then again move the grid to further positions
@@ -220,8 +377,10 @@ public class GameManager : MonoBehaviour
                     block.GetComponent<Block>().HoldingPosition = newBlockPos;
                     RemovePosition(newBlockPos);
                     iterating = true;
+                    block.GetComponent<Block>().IsMoving = true;
                     LeanTween.move(block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() =>
                     {
+                        block.GetComponent<Block>().IsMoving = false;
                         var nearbyBlocks = GetNearbyBlocks(block.transform.position);
                         var similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
                         if (!similarBlocks.Contains(block))
@@ -230,7 +389,7 @@ public class GameManager : MonoBehaviour
                         }
                         if (similarBlocks.Count >= 2)
                         {
-                            DestroySimilarBlocks(similarBlocks, block);
+                            StartCoroutine(DestroySimilarBlocks(similarBlocks, block));
                         }
                         else
                         {
@@ -263,23 +422,26 @@ public class GameManager : MonoBehaviour
             if (allblocks[i])
             {
                 GameObject block = allblocks[i];
-                var nearbyBlocks = GetNearbyBlocks(block.transform.position);
-                var similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
-                if (similarBlocks.Contains(lastBlock))
+                if (!block.GetComponent<Block>().IsMoving)
                 {
-                    block = lastBlock;
-                    nearbyBlocks.Clear();
-                    similarBlocks.Clear();
-                    nearbyBlocks = GetNearbyBlocks(block.transform.position);
-                    similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
-                }
-                if (!similarBlocks.Contains(block))
-                {
-                    similarBlocks.Add(block);
-                }
-                if (similarBlocks.Count >= 2)
-                {
-                    DestroySimilarBlocks(similarBlocks, block);
+                    var nearbyBlocks = GetNearbyBlocks(block.transform.position);
+                    var similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
+                    if (similarBlocks.Contains(lastBlock))
+                    {
+                        block = lastBlock;
+                        nearbyBlocks.Clear();
+                        similarBlocks.Clear();
+                        nearbyBlocks = GetNearbyBlocks(block.transform.position);
+                        similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
+                    }
+                    if (!similarBlocks.Contains(block))
+                    {
+                        similarBlocks.Add(block);
+                    }
+                    if (similarBlocks.Count >= 2)
+                    {
+                        StartCoroutine(DestroySimilarBlocks(similarBlocks, block));
+                    }
                 }
             }
         }
@@ -338,7 +500,7 @@ public class GameManager : MonoBehaviour
     List<GameObject> GetNearbyBlocks(Vector3 position)
     {
         return BlockParent.transform.Cast<Transform>()
-            .Where(t => Vector3.Distance(t.position, position) <= blockSize + blockSize / 5)
+            .Where(t => Vector3.Distance(t.position, position) <= blockSize + blockSize / 5 && !t.gameObject.GetComponent<Block>().IsMoving)
             .Select(t => t.gameObject)
             .OrderByDescending(block => block.GetComponent<Block>().CreatedAt)
             .ToList();
@@ -352,7 +514,7 @@ public class GameManager : MonoBehaviour
             .ToList();
     }
 
-    void DestroySimilarBlocks(List<GameObject> similarBlocks, GameObject _block)
+    IEnumerator DestroySimilarBlocks(List<GameObject> similarBlocks, GameObject _block)
     {
         //var newestBlock = similarBlocks.OrderByDescending(b => b.GetComponent<Block>().CreatedAt).First();
         if (similarBlocks.Contains(lastBlock))
@@ -360,14 +522,27 @@ public class GameManager : MonoBehaviour
             _block = lastBlock;
         }
         similarBlocks.Remove(_block);
-        
+
         double myValue = _block.GetComponent<Block>().BlockValue;
         double myNewValue = IncreaseScore(myValue, similarBlocks.Count + 1);
         _block.GetComponent<Block>().BlockValue = myNewValue;
+        double highestBlock = 0;
+        double.TryParse(PlayerPrefs.GetString("x2HighestBlock", "2"), out highestBlock);
+        if (myNewValue > highestBlock)
+        {
+            PlayerPrefs.SetString("x2HighestBlock", myNewValue.ToString());
+        }
+        _block.GetComponent<SpriteRenderer>().sortingOrder = 5;
+        _block.GetComponent<Block>().OnMergeSound.Play();
         foreach (var b in similarBlocks)
         {
             AddPosition(b.GetComponent<Block>().HoldingPosition);
-            DestroyImmediate(b);
+            b.transform.GetChild(0).GetComponent<Canvas>().sortingOrder = 1;
+            b.transform.parent = null;
+            LeanTween.move(b, _block.transform.position, 0.1f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() =>
+            {
+                DestroyImmediate(b);
+            });
         }
         float blockXPosition = _block.transform.localPosition.x;
         var availablePositions = blockPositions.Where(p => p.x == blockXPosition).ToList();
@@ -375,16 +550,29 @@ public class GameManager : MonoBehaviour
         if (availablePositions.Count > 0)
         {
             newBlockPos = availablePositions[0];
-            
         }
         ///Debug.Log("New Pos: " + newBlockPos + " actual pos: " + BlockParent.transform.GetChild(i).gameObject.transform.localPosition);
-        if (newBlockPos.y > _block.transform.localPosition.y)
+        if (newBlockPos != Vector3.zero && newBlockPos.y > _block.transform.localPosition.y)
         {
             RemovePosition(newBlockPos);
             AddPosition(_block.GetComponent<Block>().HoldingPosition);
             _block.GetComponent<Block>().HoldingPosition = newBlockPos;
             iterating = true;
-            LeanTween.move(_block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() => { iterating = false; });
+            _block.GetComponent<Block>().IsMoving = true;
+            yield return new WaitForSecondsRealtime(0.1f);
+            LeanTween.move(_block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() =>
+            {
+                iterating = false;
+                _block.GetComponent<Block>().IsMoving = false;
+                _block.GetComponent<SpriteRenderer>().sortingOrder = 1;
+                isProgressSaved = false;
+            });
+        }
+        else
+        {
+            yield return new WaitForSecondsRealtime(0.1f);
+            _block.GetComponent<SpriteRenderer>().sortingOrder = 1;
+            isProgressSaved = false;
         }
         similarBlocks.Clear();
     }
@@ -400,7 +588,19 @@ public class GameManager : MonoBehaviour
         float blockXPosition = startX + partitionIndex * partitionWidth;
 
         var availablePositions = blockPositions.Where(p => p.x == blockXPosition).ToList();
-        return availablePositions.Count > 0 ? availablePositions[0] : new Vector3(-1, -1, -1);
+        float YPosOfLastBlock = 100;
+        if (availablePositions.Count == 0)
+        {
+            foreach (Transform t in BlockParent.transform)
+            {
+                if (t.position.x == blockXPosition && t.position.y < YPosOfLastBlock)
+                {
+                    YPosOfLastBlock = t.position.y;
+                    lastBlockInSelectedRow = t.gameObject;
+                }
+            }
+        }
+        return availablePositions.Count > 0 ? availablePositions[0] : new Vector3(-100, -100, -100);
     }
 
 
@@ -413,6 +613,7 @@ public class GameManager : MonoBehaviour
 
         float startX = safeAreaTopLeft.x + blockSize / GapSize + blockSize / 2f;
         float startY = safeAreaTopLeft.y - blockSize / GapSize - blockSize / 2f;
+        startY -= PaddingFromTop;
         float partitionWidth = blockSize + blockSize / GapSize;
         float partitionHeight = blockSize + blockSize / GapSize;
         int count = 0;
@@ -422,7 +623,7 @@ public class GameManager : MonoBehaviour
             {
                 float posX = startX + i * partitionWidth;
                 float posY = startY - j * partitionHeight;
-                blockPositions[count] = new Vector3(posX, posY,0);
+                blockPositions[count] = new Vector3(posX, posY, 0);
                 count++;
             }
         }
@@ -478,16 +679,14 @@ public class GameManager : MonoBehaviour
     }
     #endregion
 
-    #region Gameover Stuff
-
-    public void CheckGameOver()
+    #region  Button_OnClicks
+    public void OnClickHome()
     {
-        if (BlockParent.transform.childCount > 35)
-        {
-            OnGameOver.Invoke();
-            IsGameOver = true;
-        }
+        SceneManager.LoadScene(0);
     }
-
+    public void OnClickPlayAgain()
+    {
+        SceneManager.LoadScene(1);
+    }
     #endregion
 }

@@ -7,6 +7,12 @@ using UnityEngine;
 
 public class Block : MonoBehaviour
 {
+    [Header("Souns/AudioSources")]
+    public AudioSource OnDropSound;
+    public AudioSource OnMergeSound;
+
+
+
     private static readonly string[] suffixes = { "", "K", "M", "B", "T", "Q", "P", "E", "Z", "Y" };
     public TMP_Text blockText;
     public List<Color> colors;
@@ -37,8 +43,8 @@ public class Block : MonoBehaviour
     private Vector3 _holdingPosition;
     public Vector3 HoldingPosition
     {
-        get { return _holdingPosition;}
-        set { _holdingPosition = value;}
+        get { return _holdingPosition; }
+        set { _holdingPosition = value; }
     }
 
     private bool _isMoving;
@@ -58,8 +64,10 @@ public class Block : MonoBehaviour
     {
         int suffixIndex = 0;
         int powerCount = (int)MathF.Log((float)num, 2);
-        int colorIndex = powerCount%10;
+        int colorIndex = powerCount % 10;
         GetComponent<SpriteRenderer>().color = colors[colorIndex];
+        SetTrailColor(colors[colorIndex]);
+        transform.GetChild(0).GetChild(0).GetComponent<TextColorChanger>().SetTextColorBasedOnBackground();
 
         // Continue to next suffix only if num is 10000 or greater
         while (num >= 10000 && suffixIndex < suffixes.Length - 1)
@@ -75,6 +83,41 @@ public class Block : MonoBehaviour
         }
         string newtext = num.ToString("0.#") + suffixes[suffixIndex];
         blockText.text = newtext;
+    }
+
+    void SetTrailColor(Color trailColor)
+    {
+        TrailRenderer trailRenderer= GetComponent<TrailRenderer>();
+        // Create a new Gradient
+        Gradient gradient = new Gradient();
+
+        // Define the color keys for the gradient
+        GradientColorKey[] colorKeys = new GradientColorKey[2];
+        colorKeys[0].color = trailColor; // Fully opaque white
+        colorKeys[0].time = 0.0f;
+        colorKeys[1].color = trailColor; // Fully transparent white
+        colorKeys[1].time = 1.0f;
+
+        // Define the alpha keys for the gradient
+        GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
+        alphaKeys[0].alpha = 1.0f; // Fully opaque
+        alphaKeys[0].time = 0.0f;
+        alphaKeys[1].alpha = 0.0f; // Fully transparent
+        alphaKeys[1].time = 1.0f;
+
+        // Assign the color and alpha keys to the gradient
+        gradient.SetKeys(colorKeys, alphaKeys);
+
+        // Assign the gradient to the trail renderer
+        trailRenderer.colorGradient = gradient;
+        AnimationCurve widthCurve = new AnimationCurve();
+        widthCurve.AddKey(0.0f, transform.localScale.x); // Width at the start of the trail
+        widthCurve.AddKey(1.0f, transform.localScale.x); // Width at the end of the trail
+        // Assign the width curve to the trail renderer
+        //trailRenderer.widthCurve = widthCurve;
+
+        // Optionally, set the overall width multiplier for the trail
+        //trailRenderer.widthMultiplier = transform.localScale.x;
     }
 
 }
