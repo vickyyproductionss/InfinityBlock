@@ -43,8 +43,10 @@ public class ManageBackground : MonoBehaviour
         float denominator = 5 * GapSize + 6;
 
         blockSize = numerator / denominator;
-        PlayScreenBottomPoint = new Vector3(PlayScreenTopPoint.x, PlayScreenTopPoint.y - (7 * blockSize + 6 * blockSize / GapSize), PlayScreenTopPoint.z);
+        PlayScreenBottomPoint = new Vector3(PlayScreenTopPoint.x, PlayScreenTopPoint.y - (7 * blockSize + 8 * blockSize / GapSize), PlayScreenTopPoint.z);
         PlayScreenTopPoint.y -= (blockSize/GapSize)/2;
+        PlayScreenBottomPoint.y -= GameManager.instance.PaddingFromTop;
+        PlayScreenTopPoint.y -= GameManager.instance.PaddingFromTop;
         TopLine.transform.position = PlayScreenTopPoint;
         BottomLine.transform.position = PlayScreenBottomPoint;
         CalculateBlockPositions();
