@@ -9,6 +9,7 @@ using UnityEngine.SceneManagement;
 
 public class PlayfabManager : MonoBehaviour
 {
+    public int GemsInWallet;
     public delegate void CurrencyChangeEvent(int amount);
     public static event CurrencyChangeEvent OnCurrencyChange;
 
@@ -33,7 +34,7 @@ public class PlayfabManager : MonoBehaviour
     }
 
     //Currency Name On Server
-    [SerializeField] private string _currencyCode = "GM";
+    [SerializeField] private string _currencyCode = "GS";
     [SerializeField] private string _leaderboardName = "Highscore";
     public GameObject NamePanel;
 
@@ -141,12 +142,13 @@ public class PlayfabManager : MonoBehaviour
 
     private void OnVirtualCurrencyUpdate(ModifyUserVirtualCurrencyResult result)
     {
+        GemsInWallet = result.Balance;
         OnCurrencyChange.Invoke(result.Balance);
     }
 
     private void OnVirtualCurrencyUpdateError(PlayFabError error)
     {
-
+        Debug.LogError("Error is: " + error.ToString());
     }
     public void GetVirtualCurrencyBalance()
     {
@@ -155,10 +157,8 @@ public class PlayfabManager : MonoBehaviour
             {
                 if (result.VirtualCurrency.TryGetValue(_currencyCode, out int balance))
                 {
-                    if(SceneManager.GetActiveScene().buildIndex == 0)
-                    {
-                        OnCurrencyChange.Invoke(balance);
-                    }
+                    GemsInWallet = balance;
+                    OnCurrencyChange.Invoke(balance);
                     Debug.Log($"Current balance of {_currencyCode}: {balance}");
                 }
                 else

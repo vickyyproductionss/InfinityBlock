@@ -9,14 +9,21 @@ public class UIManager : MonoBehaviour
     public GameManager gameManager;
 
 
-    [Header("TotalScore Blocks")]
+    [Header("UI Texts")]
     public TMP_Text TotalScoreText;
+    public TMP_Text GemsText;
     [Header("Game Over Stuff")]
     public GameObject GameoverPanel;
     void OnEnable()
     {
         gameManager.OnUIUpdate += UpdateUI;
         gameManager.OnGameOver += GameOver;
+        PlayfabManager.OnCurrencyChange += CurrencyChange;
+    }
+
+    private void CurrencyChange(int amount)
+    {
+        GemsText.text = amount.ToString();
     }
 
     private void UpdateUI()
@@ -28,6 +35,7 @@ public class UIManager : MonoBehaviour
     {
         gameManager.OnUIUpdate -= UpdateUI;
         gameManager.OnGameOver -= GameOver;
+        PlayfabManager.OnCurrencyChange -= CurrencyChange;
     }
 
     #region Game Over Handle
