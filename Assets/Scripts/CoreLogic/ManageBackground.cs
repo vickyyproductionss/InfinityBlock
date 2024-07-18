@@ -43,6 +43,13 @@ public class ManageBackground : MonoBehaviour
         float denominator = 5 * GapSize + 6;
 
         blockSize = numerator / denominator;
+        numerator = safeArea.width;//
+        denominator = safeArea.height;
+        float divide = numerator / denominator;
+
+        blockSize = divide * (1.6295126f);
+
+
         PlayScreenBottomPoint = new Vector3(PlayScreenTopPoint.x, PlayScreenTopPoint.y - (7 * blockSize + 8 * blockSize / GapSize), PlayScreenTopPoint.z);
         PlayScreenTopPoint.y -= (blockSize/GapSize)/2;
         PlayScreenBottomPoint.y -= GameManager.instance.PaddingFromTop;
@@ -57,8 +64,9 @@ public class ManageBackground : MonoBehaviour
 
         Rect safeArea = Screen.safeArea;
         Vector3 safeAreaTopLeft = Camera.main.ScreenToWorldPoint(new Vector3(safeArea.xMin, safeArea.yMax, Camera.main.nearClipPlane));
+        Vector3 safeAreaTopRight = Camera.main.ScreenToWorldPoint(new Vector3(safeArea.xMax, safeArea.yMax, Camera.main.nearClipPlane));
 
-        float startX = safeAreaTopLeft.x + blockSize / GapSize + blockSize / 2f;
+        float startX = (safeAreaTopLeft.x + safeAreaTopRight.x)/2 - 2 * (blockSize / GapSize) - 2 * blockSize;
         float startY = safeAreaTopLeft.y - blockSize / GapSize - blockSize / 2f;
         float partitionWidth = blockSize + blockSize / GapSize;
         float partitionHeight = blockSize + blockSize / GapSize;
@@ -99,10 +107,10 @@ public class ManageBackground : MonoBehaviour
         Vector3 screenRightPoint = mainCamera.ScreenToWorldPoint(new Vector3(Screen.width, Screen.height / 2, mainCamera.nearClipPlane));
 
         // Calculate the total width available for the sprites
-        float totalWidth = screenRightPoint.x - screenLeftPoint.x - 2 * gapSize;
+        float totalWidth = screenRightPoint.x - screenLeftPoint.x;
 
         // Calculate the width of each sprite
-        float spriteWidth = (totalWidth - 6 * gapSize) / 5;
+        float spriteWidth = blockSize + blockSize/GapSize + (blockSize/GapSize)/3;
         float spriteHeight = (PlayScreenTopPoint.y - PlayScreenBottomPoint.y);
         float YPos = (PlayScreenBottomPoint.y + PlayScreenTopPoint.y) / 2;
 

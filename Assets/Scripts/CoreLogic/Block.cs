@@ -11,8 +11,6 @@ public class Block : MonoBehaviour
     public AudioSource OnDropSound;
     public AudioSource OnMergeSound;
 
-
-
     private static readonly string[] suffixes = { "", "K", "M", "B", "T", "Q", "P", "E", "Z", "Y" };
     public TMP_Text blockText;
     public List<Color> colors;
@@ -43,9 +41,20 @@ public class Block : MonoBehaviour
     private Vector3 _holdingPosition;
     public Vector3 HoldingPosition
     {
-        get { return _holdingPosition; }
-        set { _holdingPosition = value; }
+        get
+        {
+            return _holdingPosition;
+        }
+        set
+        {
+            row = GameManager.instance.RowColumnDictionary[value].row;
+            column = GameManager.instance.RowColumnDictionary[value].column;
+            _holdingPosition = value;
+        }
     }
+
+    public int row;
+    public int column;
 
     private bool _isMoving;
     public bool IsMoving
@@ -54,9 +63,41 @@ public class Block : MonoBehaviour
         set { _isMoving = value; }
     }
 
+    private bool _isMerging;
+    public bool IsMerging
+    {
+        get { return _isMerging; }
+        set { _isMerging = value; }
+    }
+
     void Start()
     {
         CreatedAt = DateTime.Now;
+    }
+
+    void OnMouseDown()
+    {
+        if (GameManager.instance.isUsingPowerup && GameManager.instance.BlocksInPower.Count < 2 && GameManager.instance.activePowerIndex == 1)
+        {
+            if (!GameManager.instance.BlocksInPower.Contains(gameObject))
+            {
+                GameManager.instance.BlocksInPower.Add(gameObject);
+                gameObject.transform.GetChild(1).gameObject.SetActive(true);
+                CreatedAt = DateTime.Now;//Modified so that others merge into this assuming it as latest
+            }
+            if (GameManager.instance.BlocksInPower.Count == 2)
+            {
+                GameObject block1 = GameManager.instance.BlocksInPower[0];
+                GameObject block2 = GameManager.instance.BlocksInPower[1];
+                GameManager.instance.SwapTheseBlocks(block1, block2);
+            }
+        }
+        else if (GameManager.instance.isUsingPowerup && GameManager.instance.BlocksInPower.Count < 1 && GameManager.instance.activePowerIndex == 2)
+        {
+            gameObject.transform.GetChild(1).gameObject.SetActive(true);
+            CreatedAt = DateTime.Now;//Modified so that others merge into this assuming it as latest
+            GameManager.instance.SmashTheBlock(gameObject);
+        }
     }
 
 
@@ -87,7 +128,7 @@ public class Block : MonoBehaviour
 
     void SetTrailColor(Color trailColor)
     {
-        TrailRenderer trailRenderer= GetComponent<TrailRenderer>();
+        TrailRenderer trailRenderer = GetComponent<TrailRenderer>();
         // Create a new Gradient
         Gradient gradient = new Gradient();
 

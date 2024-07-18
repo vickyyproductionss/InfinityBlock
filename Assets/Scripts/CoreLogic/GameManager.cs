@@ -55,6 +55,7 @@ public class GameManager : MonoBehaviour
     public GameObject BlockParent;
     public GameObject PopupsParent;
     public Vector3[] blockPositions;
+    public Dictionary<Vector3, RowAndColumn> RowColumnDictionary = new Dictionary<Vector3, RowAndColumn>();
     public Dictionary<Vector3, int> removedElements;
     private Camera mainCamera;
     public static GameManager instance;
@@ -75,6 +76,13 @@ public class GameManager : MonoBehaviour
     public ManageBackground manageBackground;
 
     bool isProgressSaved = true;
+
+    [Header("Powerups")]
+    public GameObject SwapBlocksPopup;
+    public GameObject SmashBlocksPopup;
+    public bool isUsingPowerup;
+    public int activePowerIndex;//0=NoPower,1=SwapBlocksPower,2=SmashBlockPower
+    public List<GameObject> BlocksInPower;
 
     #region TestingStuff
     public int TestBlocksCount;
@@ -172,7 +180,7 @@ public class GameManager : MonoBehaviour
     void Update()
     {
         DropNextBlock();
-        if (blocksSpawned > 1)
+        if (blocksSpawned > 1 && !isUsingPowerup)
         {
             if (!isMergeRunning)
             {
@@ -217,7 +225,7 @@ public class GameManager : MonoBehaviour
     #region  CoreLogic
     void DropNextBlock()
     {
-        if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began && !testingMode && !IsGameOver && timeBetweenDrops > 0.5f && !IsAnythingMoving() && !IsAnyPopupActive())
+        if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began && !testingMode && !IsGameOver && timeBetweenDrops > 0.5f && !IsAnythingMoving() && !IsAnyPopupActive() && !isUsingPowerup)
         {
             timeBetweenDrops = 0;
             blocksSpawned++;
@@ -225,6 +233,21 @@ public class GameManager : MonoBehaviour
             Vector3 lastTouchPositionScreen = lastTouch.position;
             Vector3 newBlockPos = DeterminePartitionAndPosition(lastTouchPositionScreen.x);
             lastTouchPosition = mainCamera.ScreenToWorldPoint(new Vector3(lastTouchPositionScreen.x, lastTouchPositionScreen.y, mainCamera.nearClipPlane));
+            List<GameObject> blockstomatch = LastBlockInTouchedPos(lastTouchPositionScreen.x);
+
+            GameObject lastblockinthislane = null;
+            if (blockstomatch.Count > 0 && blockstomatch[0] != null)
+            {
+                lastblockinthislane = blockstomatch[0];
+            }
+            bool LastBlockIsSame = false;
+            if (lastblockinthislane != null && lastblockinthislane.GetComponent<Block>().BlockValue == NextBlockNumber && blockstomatch.Count == 1)
+            {
+                newBlockPos = lastblockinthislane.transform.position;
+                LastBlockIsSame = true;
+                lastblockinthislane.GetComponent<Block>().IsMerging = true;
+                AddPosition(newBlockPos);
+            }
             if (newBlockPos != new Vector3(-100, -100, -100) && lastTouchPosition.y > manageBackground.BottomLine.transform.position.y)
             {
                 lastTouchPosition = new Vector3(newBlockPos.x, manageBackground.BottomLine.transform.position.y, newBlockPos.z);
@@ -239,10 +262,10 @@ public class GameManager : MonoBehaviour
                 block.GetComponent<Block>().BlockValue = blockNum;
                 SuperNextBlockNumber = Mathf.Pow(2, pow);
                 UISuperNextBlock.BlockValue = SuperNextBlockNumber;
-                RemovePosition(newBlockPos);
                 block.GetComponent<Block>().HoldingPosition = newBlockPos;
                 block.GetComponent<Block>().IsMoving = true;
-                LeanTween.move(block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() => { OnBlockAnimFinished(block, newBlockPos); });
+                RemovePosition(newBlockPos);
+                LeanTween.move(block, newBlockPos, 0.25f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() => { OnBlockAnimFinished(block, newBlockPos, lastblockinthislane, LastBlockIsSame); });
             }
             else
             {
@@ -347,8 +370,13 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
-    void OnBlockAnimFinished(GameObject block, Vector3 finalPos)
+    void OnBlockAnimFinished(GameObject block, Vector3 finalPos, GameObject lastblockinthislane, bool islastblocksame)
     {
+        if (islastblocksame)
+        {
+            Destroy(lastblockinthislane);
+            block.GetComponent<Block>().BlockValue *= 2;
+        }
         block.GetComponent<Block>().OnDropSound.Play();
         block.GetComponent<Block>().IsMoving = false;
         block.transform.position = finalPos;
@@ -421,31 +449,47 @@ public class GameManager : MonoBehaviour
         {
             if (allblocks[i])
             {
-                GameObject block = allblocks[i];
-                if (!block.GetComponent<Block>().IsMoving)
-                {
-                    var nearbyBlocks = GetNearbyBlocks(block.transform.position);
-                    var similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
-                    if (similarBlocks.Contains(lastBlock))
-                    {
-                        block = lastBlock;
-                        nearbyBlocks.Clear();
-                        similarBlocks.Clear();
-                        nearbyBlocks = GetNearbyBlocks(block.transform.position);
-                        similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
-                    }
-                    if (!similarBlocks.Contains(block))
-                    {
-                        similarBlocks.Add(block);
-                    }
-                    if (similarBlocks.Count >= 2)
-                    {
-                        StartCoroutine(DestroySimilarBlocks(similarBlocks, block));
-                    }
-                }
+                MergeThisBlock(allblocks[i]);
             }
         }
         isMergeRunning = false;
+    }
+    void MergeThisBlock(GameObject _blck)
+    {
+        GameObject block = _blck;
+        if (!block.GetComponent<Block>().IsMoving)
+        {
+            var nearbyBlocks = GetNearbyBlocks(block.transform.position);
+            var similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
+            bool similarmoving = false;
+            foreach (var similars in similarBlocks)
+            {
+                if (similars.GetComponent<Block>().IsMoving || similars.GetComponent<Block>().IsMerging)
+                {
+                    similarmoving = true;
+                }
+            }
+            if (similarBlocks.Contains(lastBlock))
+            {
+                block = lastBlock;
+                nearbyBlocks.Clear();
+                similarBlocks.Clear();
+                nearbyBlocks = GetNearbyBlocks(block.transform.position);
+                similarBlocks = GetSimilarBlocks(nearbyBlocks, block.GetComponent<Block>().BlockValue);
+            }
+            if (!similarBlocks.Contains(block))
+            {
+                similarBlocks.Add(block);
+            }
+            if (similarBlocks.Count >= 2 && !similarmoving)
+            {
+                foreach (var similars in similarBlocks)
+                {
+                    similars.GetComponent<Block>().IsMerging = true;
+                }
+                StartCoroutine(DestroySimilarBlocks(similarBlocks, block));
+            }
+        }
     }
     void RemovePosition(Vector3 element)
     {
@@ -453,7 +497,7 @@ public class GameManager : MonoBehaviour
         if (index != -1)
         {
             removedElements[element] = index;
-            blockPositions[index] = Vector3.zero;
+            blockPositions[index] = Vector3.one * 100;
         }
         else
         {
@@ -544,6 +588,7 @@ public class GameManager : MonoBehaviour
                 DestroyImmediate(b);
             });
         }
+
         float blockXPosition = _block.transform.localPosition.x;
         var availablePositions = blockPositions.Where(p => p.x == blockXPosition).ToList();
         Vector3 newBlockPos = new Vector3();
@@ -575,32 +620,93 @@ public class GameManager : MonoBehaviour
             isProgressSaved = false;
         }
         similarBlocks.Clear();
+        _block.GetComponent<Block>().IsMerging = false;
     }
 
     public Vector3 DeterminePartitionAndPosition(float touchXScreenPos)
     {
         Rect safeArea = Screen.safeArea;
         Vector3 safeAreaBottomLeft = mainCamera.ScreenToWorldPoint(new Vector3(safeArea.xMin, safeArea.yMin, mainCamera.nearClipPlane));
-        float startX = safeAreaBottomLeft.x + blockSize / GapSize + blockSize / 2f;
+        Vector3 safeAreaBottomRight = mainCamera.ScreenToWorldPoint(new Vector3(safeArea.xMax, safeArea.yMin, mainCamera.nearClipPlane));
+
+        // float startX = safeAreaBottomLeft.x + (blockSize / GapSize) + blockSize/2;
+        float startX = (safeAreaBottomLeft.x + safeAreaBottomRight.x) / 2 - 2 * (blockSize / GapSize) - 2 * blockSize;
         float partitionWidth = blockSize + blockSize / GapSize;
 
         int partitionIndex = Mathf.FloorToInt((touchXScreenPos - safeArea.xMin) / (safeArea.width / 5));
         float blockXPosition = startX + partitionIndex * partitionWidth;
 
         var availablePositions = blockPositions.Where(p => p.x == blockXPosition).ToList();
-        float YPosOfLastBlock = 100;
-        if (availablePositions.Count == 0)
+        return availablePositions.Count > 0 ? availablePositions[0] : new Vector3(-100, -100, -100);
+    }
+
+    public List<GameObject> LastBlockInTouchedPos(float touchXScreenPos)
+    {
+        List<GameObject> BlocksToReturn = new List<GameObject>();
+        Rect safeArea = Screen.safeArea;
+        Vector3 safeAreaBottomLeft = mainCamera.ScreenToWorldPoint(new Vector3(safeArea.xMin, safeArea.yMin, mainCamera.nearClipPlane));
+        Vector3 safeAreaBottomRight = mainCamera.ScreenToWorldPoint(new Vector3(safeArea.xMax, safeArea.yMin, mainCamera.nearClipPlane));
+
+        // float startX = safeAreaBottomLeft.x + (blockSize / GapSize) + blockSize/2;
+        float startX = (safeAreaBottomLeft.x + safeAreaBottomRight.x) / 2 - 2 * (blockSize / GapSize) - 2 * blockSize;
+        float partitionWidth = blockSize + blockSize / GapSize;
+
+        int partitionIndex = Mathf.FloorToInt((touchXScreenPos - safeArea.xMin) / (safeArea.width / 5));
+
+        float blockXPosition = startX + partitionIndex * partitionWidth;
+        float blockYPosition = 1000;
+        GameObject LastBlockInTouchPos = null;
+        for (int i = 0; i < BlockParent.transform.childCount; i++)
         {
-            foreach (Transform t in BlockParent.transform)
+            if (BlockParent.transform.GetChild(i).transform.position.x == blockXPosition && BlockParent.transform.GetChild(i).transform.position.y < blockYPosition)
             {
-                if (t.position.x == blockXPosition && t.position.y < YPosOfLastBlock)
+                blockYPosition = BlockParent.transform.GetChild(i).transform.position.y;
+                LastBlockInTouchPos = BlockParent.transform.GetChild(i).gameObject;
+            }
+        }
+        if (LastBlockInTouchPos != null)
+        {
+            BlocksToReturn.Add(LastBlockInTouchPos);
+            int row = LastBlockInTouchPos.GetComponent<Block>().row;
+            int column = LastBlockInTouchPos.GetComponent<Block>().column;
+            int targetedrRow = row + 1;
+            List<int> targetedColumns = new List<int>();
+            if (column == 0)
+            {
+                targetedColumns.Add(1);
+            }
+            else if (column == 4)
+            {
+                targetedColumns.Add(3);
+            }
+            else
+            {
+                targetedColumns.Add(column - 1);
+                targetedColumns.Add(column + 1);
+            }
+            for (int i = 0; i < targetedColumns.Count; i++)
+            {
+                Block block = FindBlockByRowAndColumn(targetedrRow, targetedColumns[i], LastBlockInTouchPos.GetComponent<Block>().BlockValue);
+                if (block != null)
                 {
-                    YPosOfLastBlock = t.position.y;
-                    lastBlockInSelectedRow = t.gameObject;
+                    BlocksToReturn.Add(block.gameObject);
                 }
             }
         }
-        return availablePositions.Count > 0 ? availablePositions[0] : new Vector3(-100, -100, -100);
+        return BlocksToReturn;
+    }
+
+    public Block FindBlockByRowAndColumn(int row, int column, double value)
+    {
+        Block[] allBlocks = FindObjectsOfType<Block>();
+        foreach (Block block in allBlocks)
+        {
+            if (block.row == row && block.column == column && block.BlockValue == value)
+            {
+                return block;
+            }
+        }
+        return null;
     }
 
 
@@ -610,8 +716,9 @@ public class GameManager : MonoBehaviour
 
         Rect safeArea = Screen.safeArea;
         Vector3 safeAreaTopLeft = mainCamera.ScreenToWorldPoint(new Vector3(safeArea.xMin, safeArea.yMax, mainCamera.nearClipPlane));
+        Vector3 safeAreaTopRight = mainCamera.ScreenToWorldPoint(new Vector3(safeArea.xMax, safeArea.yMax, mainCamera.nearClipPlane));
 
-        float startX = safeAreaTopLeft.x + blockSize / GapSize + blockSize / 2f;
+        float startX = (safeAreaTopLeft.x + safeAreaTopRight.x) / 2 - 2 * (blockSize / GapSize) - 2 * blockSize;
         float startY = safeAreaTopLeft.y - blockSize / GapSize - blockSize / 2f;
         startY -= PaddingFromTop;
         float partitionWidth = blockSize + blockSize / GapSize;
@@ -623,7 +730,9 @@ public class GameManager : MonoBehaviour
             {
                 float posX = startX + i * partitionWidth;
                 float posY = startY - j * partitionHeight;
-                blockPositions[count] = new Vector3(posX, posY, 0);
+                Vector3 position = new Vector3(posX, posY, 0);
+                blockPositions[count] = position;
+                RowColumnDictionary.Add(position, new RowAndColumn(j, i));
                 count++;
             }
         }
@@ -672,10 +781,14 @@ public class GameManager : MonoBehaviour
         float numerator = safeAreaWidth * GapSize;
         float denominator = 5 * GapSize + 6;
 
-
         blockSize = numerator / denominator;
+        numerator = safeArea.width;//
+        denominator = safeArea.height;
+        float divide = numerator / denominator;
 
-
+        blockSize = divide * (1.6295126f);
+        //1284/2535 x  (1.6295126) = 0.8253626
+        Debug.Log(safeArea.width + " is width " + safeArea.height + " and blocksize is " + blockSize);
     }
     #endregion
 
@@ -689,4 +802,85 @@ public class GameManager : MonoBehaviour
         SceneManager.LoadScene(1);
     }
     #endregion
+
+    #region POWERUPS
+    public void SwapTheseBlocks(GameObject block1, GameObject block2)
+    {
+        Vector3 Block_1_HoldingPos = block1.GetComponent<Block>().HoldingPosition;
+        Vector3 Block_2_HoldingPos = block2.GetComponent<Block>().HoldingPosition;
+        LeanTween.rotateZ(block1, 360, 1.5f).setEase(LeanTweenType.easeInQuart);
+        LeanTween.rotateZ(block2, 360, 1.5f).setEase(LeanTweenType.easeInQuart);
+        LeanTween.move(block1, Block_2_HoldingPos, 1.5f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() =>
+        {
+            block1.GetComponent<Block>().HoldingPosition = Block_2_HoldingPos;
+            MergeThisBlock(block1);
+        });
+        LeanTween.move(block2, Block_1_HoldingPos, 1.5f).setEase(LeanTweenType.easeOutQuad).setOnComplete(() =>
+        {
+            block2.GetComponent<Block>().HoldingPosition = Block_1_HoldingPos;
+            BlocksInPower[0].transform.GetChild(1).gameObject.SetActive(false);
+            BlocksInPower[1].transform.GetChild(1).gameObject.SetActive(false);
+            BlocksInPower.Clear();
+            MergeThisBlock(block2);
+            Invoke(nameof(OnSwapEnd), .25f);
+        });
+    }
+
+    public void SmashTheBlock(GameObject block)
+    {
+        AddPosition(block.GetComponent<Block>().HoldingPosition);
+        LeanTween.scale(block, Vector2.zero, 2).setEase(LeanTweenType.easeInOutCirc).setOnComplete(() =>
+        {
+            Destroy(block);
+             //PlayPopSoundasWell
+            Invoke(nameof(OnSmashEnd), .25f);
+        });
+    }
+    void OnSmashEnd()
+    {
+        activePowerIndex = 0;
+        isUsingPowerup = false;
+        SmashBlocksPopup.SetActive(false);
+    }
+
+    public void StartSwap()
+    {
+        if (PlayfabManager.instance.GemsInWallet >= 60)
+        {
+            PlayfabManager.instance.DeductVirtualCurrency(60);
+            isUsingPowerup = true;
+            activePowerIndex = 1;
+            SwapBlocksPopup.SetActive(true);
+        }
+    }
+
+    public void OnSwapEnd()
+    {
+        activePowerIndex = 0;
+        isUsingPowerup = false;
+        SwapBlocksPopup.SetActive(false);
+    }
+
+
+    public void StartSmash()
+    {
+        if (PlayfabManager.instance.GemsInWallet >= 60)
+        {
+            PlayfabManager.instance.DeductVirtualCurrency(60);
+            isUsingPowerup = true;
+            activePowerIndex = 2;
+            SmashBlocksPopup.SetActive(true);
+        }
+    }
+    #endregion
+}
+public class RowAndColumn
+{
+    public int row;
+    public int column;
+    public RowAndColumn(int row, int column)
+    {
+        this.row = row;
+        this.column = column;
+    }
 }
