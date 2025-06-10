@@ -7,6 +7,7 @@ using UnityEngine.UI;
 
 public class UIBlock : MonoBehaviour
 {
+    public bool isSortBallsBlock = false;
     private static readonly string[] suffixes = { "", "K", "M", "B", "T", "Q", "P", "E", "Z", "Y" };
     public TMP_Text blockText;
     public List<Color> colors;
@@ -56,9 +57,10 @@ public class UIBlock : MonoBehaviour
 
     public void OnBlockValueChanged(double num)
     {
+
         int suffixIndex = 0;
         int powerCount = (int)MathF.Log((float)num, 2);
-        int colorIndex = powerCount%10;
+        int colorIndex = powerCount % 10;
         GetComponent<Image>().color = colors[colorIndex];
         GetComponent<TextColorChanger>().SetTextColorBasedOnBackground2();
 
@@ -75,6 +77,14 @@ public class UIBlock : MonoBehaviour
 
         }
         string newtext = num.ToString("0.#") + suffixes[suffixIndex];
-        blockText.text = newtext;
+        if (isSortBallsBlock)
+        {
+            num += 1;
+            blockText.text = num.ToString();
+        }
+        else
+        {
+            blockText.text = newtext;
+        }
     }
 }

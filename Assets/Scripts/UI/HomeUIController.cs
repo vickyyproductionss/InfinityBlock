@@ -7,6 +7,8 @@ using UnityEngine;
 
 public class HomeUIController : MonoBehaviour
 {
+    public string HighscoreString = "x2BlocksHighscore";
+    public string HighestLevelString = "x2HighestBlock";
     [SerializeField] private TMP_Text[] _gemsTexts;
     [SerializeField] private TMP_Text _highscoreText;
     [SerializeField] private UIBlock MaxUIBlock;
@@ -30,12 +32,12 @@ public class HomeUIController : MonoBehaviour
     }
     void UpdateMaxBlockUI()
     {
-        double.TryParse(PlayerPrefs.GetString("x2HighestBlock", "2"), out double highestBlock);
+        double.TryParse(PlayerPrefs.GetString(HighestLevelString, "1"), out double highestBlock);
         MaxUIBlock.GetComponent<UIBlock>().BlockValue = highestBlock;
     }
     private void UpdateHighscoreUI()
     {
-        int score = PlayerPrefs.GetInt("x2BlocksHighscore");
+        int score = PlayerPrefs.GetInt(HighscoreString);
         _highscoreText.text = ConvertToSuffixedString(score);
     }
 
